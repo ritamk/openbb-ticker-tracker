@@ -1,0 +1,9 @@
+openbb
+pandas
+pandas-ta
+openai
+fastapi
+uvicorn[standard]
+pydantic
+pydantic_settings
+pytest

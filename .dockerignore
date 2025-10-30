@@ -1,0 +1,25 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments / build cache
+bin/
+lib/
+include/
+.venv/
+.env
+.pytest_cache/
+.mypy_cache/
+
+# Local data and logs
+trading_llm/logs/
+*.log
+
+# VCS / editor config
+.git/
+.gitignore
+.DS_Store
+.cursor/
+*.swp
+

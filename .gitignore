@@ -1,0 +1,73 @@
+### macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+### Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+*.so
+
+### Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# Embedded venv in this repo (do not commit)
+bin/
+lib/
+include/
+share/
+pyvenv.cfg
+
+### Packaging / build artifacts
+build/
+dist/
+wheels/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+pip-log.txt
+
+### Tool caches
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.pytype/
+.tox/
+.nox/
+
+### Coverage
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+### Jupyter
+.ipynb_checkpoints/
+
+### Logs and runtime files
+*.log
+*.jsonl
+**/logs/
+*.pid
+
+### Environment and secrets
+.env
+.env.*
+deploy/cloud_run.env
+
+### Editors / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+### Misc caches
+.cache/
+.cursorignore
