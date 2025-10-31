@@ -1,82 +1,73 @@
-"""Risk manager with volatility gates and duplicate trade checks."""
-from typing import Dict, Any, Optional
+"""Rule-based risk manager for trade approvals."""
+from __future__ import annotations
+
+from math import sqrt
+from typing import Any, Dict, List, Optional
 
 
-# In-memory store for last trade decisions per symbol
-_last_trades: Dict[str, Dict[str, Any]] = {}
+class RiskManager:
+    """Apply lightweight guardrails before executing trades."""
 
+    def __init__(self, max_volatility: float = 0.03, duplicate_penalty: bool = True):
+        self.max_volatility = max_volatility
+        self.duplicate_penalty = duplicate_penalty
 
-def evaluate_trade(
-    symbol: str,
-    decision: Dict[str, Any],
-    ta_snapshot: Dict[str, Any],
-    last_trade: Optional[Dict[str, Any]] = None
-) -> Dict[str, Any]:
-    """
-    Evaluate trade decision against risk rules.
-    
-    Args:
-        symbol: Stock symbol (e.g., "INFY.NS")
-        decision: Trade decision dict with "decision" key
-        ta_snapshot: Technical data snapshot with atr_percent and realized_vol_20
-        last_trade: Optional last trade dict for this symbol (auto-loaded from memory)
-    
-    Returns:
-        Dict with approved (bool), reason (str), realized_vol_20 (float)
-    """
-    # Load last trade from memory if not provided
-    if last_trade is None:
-        last_trade = _last_trades.get(symbol)
-    
-    # Get ATR percent (active gate)
-    atr_percent = ta_snapshot.get("atr_percent", 0.0)
-    realized_vol_20 = ta_snapshot.get("realized_vol_20", 0.0)
-    
-    # Rule 1: Reject if ATR% > 3%
-    if atr_percent > 3.0:
-        result = {
-            "approved": False,
-            "reason": f"ATR% ({atr_percent}%) exceeds 3% threshold",
-            "realized_vol_20": realized_vol_20
+    def evaluate(
+        self,
+        symbol: str,
+        timeframe: str,
+        trade: Dict[str, Any],
+        *,
+        volatility: Optional[float] = None,
+        last_trade: Optional[Dict[str, Any]] = None,
+        rows: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """Return approval boolean with reason message and computed metadata."""
+        computed_vol = volatility if volatility is not None else self._compute_volatility(rows)
+        reasons: List[str] = []
+        approved = True
+
+        if computed_vol is not None and computed_vol > self.max_volatility:
+            approved = False
+            reasons.append(
+                f"Volatility {computed_vol:.3f} exceeds limit {self.max_volatility:.3f}"
+            )
+
+        if self.duplicate_penalty and last_trade and last_trade.get("decision") == trade.get("decision"):
+            approved = False
+            reasons.append("Duplicate decision detected")
+
+        if approved:
+            reasons.append("Within limits")
+
+        return {
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "approved": approved,
+            "reason": "; ".join(reasons),
+            "volatility": computed_vol,
+            "last_decision": last_trade.get("decision") if last_trade else None,
         }
-        # Don't update last trade if rejected
-        return result
-    
-    # Rule 2: Reject if same decision repeated consecutively
-    current_decision = decision.get("decision", "").upper()
-    if last_trade and last_trade.get("decision", "").upper() == current_decision:
-        result = {
-            "approved": False,
-            "reason": f"Duplicate decision: {current_decision} (same as last trade)",
-            "realized_vol_20": realized_vol_20
-        }
-        return result
-    
-    # All checks passed
-    result = {
-        "approved": True,
-        "reason": "Within limits",
-        "realized_vol_20": realized_vol_20
-    }
-    
-    # Update last trade in memory
-    _last_trades[symbol] = {
-        "decision": current_decision,
-        "timestamp": ta_snapshot.get("timestamp", "")
-    }
-    
-    return result
 
-
-def clear_last_trade(symbol: Optional[str] = None) -> None:
-    """
-    Clear last trade memory (useful for testing or reset).
-    
-    Args:
-        symbol: Symbol to clear, or None to clear all
-    """
-    if symbol:
-        _last_trades.pop(symbol, None)
-    else:
-        _last_trades.clear()
-
+    @staticmethod
+    def _compute_volatility(rows: Optional[List[Dict[str, Any]]], window: int = 20) -> Optional[float]:
+        if not rows or len(rows) < window + 1:
+            return None
+        closes = []
+        for row in rows[-(window + 1) :]:
+            try:
+                closes.append(float(row.get("close")))
+            except (TypeError, ValueError):
+                return None
+        if len(closes) < window + 1:
+            return None
+        returns = [
+            (closes[i] - closes[i - 1]) / closes[i - 1]
+            for i in range(1, len(closes))
+            if closes[i - 1]
+        ]
+        if len(returns) < window:
+            return None
+        mean = sum(returns) / len(returns)
+        variance = sum((r - mean) ** 2 for r in returns) / len(returns)
+        return sqrt(variance)

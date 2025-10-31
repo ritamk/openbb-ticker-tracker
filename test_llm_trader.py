@@ -59,6 +59,25 @@ def analyze_news_sentiment(symbol: str, llm: llm_client.LLMClient) -> Dict[str, 
             )
             try:
                 labels = llm.call(news_system, news_user)
+                # Coerce labels to match input lengths; fill missing with neutral
+                if isinstance(labels, dict):
+                    def _coerce(key: str, titles: list[str]) -> list[dict[str, str]]:
+                        raw = labels.get(key)
+                        safe: list[dict[str, str]] = []
+                        for idx, title in enumerate(titles):
+                            if isinstance(raw, list) and idx < len(raw) and isinstance(raw[idx], dict):
+                                sent = str(raw[idx].get("sentiment", "neutral")).lower()
+                            else:
+                                sent = "neutral"
+                            if sent not in ("bullish", "bearish", "neutral"):
+                                sent = "neutral"
+                            safe.append({"title": title, "sentiment": sent})
+                        return safe
+                    labels = {
+                        "global": _coerce("global", global_titles),
+                        "india": _coerce("india", india_titles),
+                        "symbol": _coerce("symbol", symbol_titles),
+                    }
                 cache_data = {"payload": news_payload, "labels": labels}
             except Exception:
                 labels = None

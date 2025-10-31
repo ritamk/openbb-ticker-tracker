@@ -1,2 +1,3 @@
-"""API package for exposing trading services."""
+"""FastAPI service package exposing trading LLM data endpoints."""
+
 

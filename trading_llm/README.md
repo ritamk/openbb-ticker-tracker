@@ -1,208 +1,147 @@
-# Phase 1: Lean 4-Agent LLM Trading System
+# Lean 4-Agent Trading Pipeline (Phase 1)
 
-A modular OpenBB-based LLM trading pipeline that generates structured trade decisions by analyzing technical indicators and news sentiment.
+This package implements Phase 1 of an LLM-assisted trading workflow tailored for Indian equities. It follows a lean four-agent architecture:
 
-## Architecture
+1. **TechnicalAnalyst** – interprets engineered indicators and proposes a structured signal.
+2. **NewsAnalyst** – scores short headlines for sentiment and key drivers.
+3. **TraderAgent** – synthesises technical + news context into a single trade decision.
+4. **RiskManager** – applies rule-based guard rails (volatility, duplicate signals).
 
-The system uses a **Lean 4-Agent Architecture**:
+All runs are orchestrated by `core/orchestrator.py`, with results saved as JSON lines for audit and future backtesting.
 
-1. **Technical Analyst** (`gpt-4o-mini`) - Interprets technical indicators
-2. **News Analyst** (`gpt-4o-mini`) - Analyzes news sentiment
-3. **Trader Agent** (`gpt-4o`) - Synthesizes both into a final decision
-4. **Risk Manager** (rule-based) - Applies volatility gates and duplicate checks
+---
 
-## Quick Start
+## 1. Environment Prerequisites
 
-```bash
-# Ensure OPENAI_API_KEY is set
-export OPENAI_API_KEY="your-key-here"
+- Python 3.10+
+- [OpenBB Platform](https://docs.openbb.co/platform) (or compatible SDK) installed and authenticated (`openbb` module importable).
+- OpenAI Python client (`pip install openai==1.*`).
+- API credentials in the environment:
+  - `OPENAI_API_KEY`
+  - Any provider-specific keys required by OpenBB news sources.
+- (Optional) `.env` file – the modules auto-load it if `dotenv` is available.
 
-# Run pipeline
-python -m trading_llm.main
-```
-
-## Project Structure
-
-```
-trading_llm/
-├── data/
-│   └── fetchers.py          # OpenBB data fetching (TA + news)
-├── agents/
-│   ├── technical_analyst.py # Technical indicator analysis
-│   ├── news_analyst.py      # News sentiment analysis
-│   ├── trader_agent.py      # Final trade decision
-│   └── risk_manager.py      # Risk gates (ATR%, duplicates)
-├── core/
-│   ├── orchestrator.py      # Pipeline coordination
-│   ├── prompts.py           # LLM prompt templates
-│   └── utils.py             # LLM calls, JSON parsing, logging
-├── logs/
-│   └── trade_log.jsonl      # Structured output logs
-├── tests/
-│   └── test_risk_and_parser.py  # Unit tests
-└── main.py                   # Entry point
-```
-
-## Trade Log Schema
-
-Each log entry in `trade_log.jsonl` follows this structure:
-
-### Top-Level Fields
-
-- **`symbol`** (string): Stock symbol (e.g., "INFY.NS")
-- **`timestamp`** (string): UTC ISO timestamp (e.g., "2025-01-31T11:00:00Z")
-
-### Technical Analysis Section
-
-**`technical.data`** (object):
-- `rsi` (float): RSI(14) value
-- `macd` (object): `{macd, signal, hist}` values
-- `macd_signal` (string): `"bullish_cross"|"bearish_cross"|"none"`
-- `bollinger` (object): `{lower, middle, upper, band_pct}`
-- `bollinger_event` (string): `"upper_band_break"|"lower_band_break"|"near_upper"|"near_lower"|"within_bands"`
-- `sma_50` (float): SMA(50) value
-- `sma_200` (float): SMA(200) value
-- `sma_50_vs_200` (string): `"above"|"below"|"equal"`
-- `atr_14` (float): ATR(14) value
-- `atr_percent` (float): `(ATR_14 / Close) * 100` - **Active risk gate**
-- `realized_vol_20` (float): 20-day realized volatility (annualized) - **Background metric**
-- `close` (float): Latest closing price
-- `volume` (int): Latest volume
-
-**`technical.analysis`** (object):
-- `signal` (string): `"bullish"|"bearish"|"neutral"`
-- `rationale` (string): Brief explanation
-- `confidence` (float): 0.0 to 1.0
-
-### News Analysis Section
-
-**`news.headlines_count`** (int): Number of headlines analyzed
-
-**`news.analysis`** (object):
-- `sentiment` (string): `"positive"|"negative"|"neutral"`
-- `summary` (string): 2-3 sentence summary
-- `confidence` (float): 0.0 to 1.0
-
-### Trade Decision Section
-
-**`trade`** (object):
-- `decision` (string): `"BUY"|"SELL"|"HOLD"`
-- `confidence` (float): 0.0 to 1.0
-- `rationale` (string): Decision explanation
-
-### Risk Evaluation Section
-
-**`risk`** (object):
-- `approved` (boolean): Whether trade passed risk checks
-- `reason` (string): Approval/rejection reason
-- `realized_vol_20` (float): Background volatility metric (always logged)
-- `atr_percent` (float): ATR% used for active gate
-
-### Metadata Section
-
-**`meta.timings`** (object):
-- `fetch` (float): Data fetch time (seconds)
-- `analyst` (float): Analyst LLM calls time (seconds)
-- `trader` (float): Trader LLM call time (seconds)
-- `risk` (float): Risk evaluation time (seconds)
-- `total` (float): Total pipeline time (seconds)
-
-### Error Handling
-
-If the pipeline fails, the log entry includes:
-- **`error`** (string): Error message
-- **`trade.decision`**: Defaults to `"HOLD"` with `confidence: 0.0`
-- **`risk.approved`**: `false` with reason `"Pipeline error"`
-
-## Risk Rules
-
-### Active Gate: ATR%
-- **Reject** if `atr_percent > 3.0`
-- Reason: `"ATR% ({value}%) exceeds 3% threshold"`
-
-### Duplicate Check
-- **Reject** if same decision repeated consecutively for the same symbol
-- Reason: `"Duplicate decision: {decision} (same as last trade)"`
-- Checks are per-symbol (different symbols can have same decision)
-
-### Background Metric: Realized Volatility
-- Always computed and logged: `realized_vol_20`
-- Formula: `daily_returns.rolling(20).std() * sqrt(252)`
-- Used for observability only (not a gate)
-
-## Cost Optimization
-
-Per symbol cycle:
-- **Technical Analyst**: 1 call to `gpt-4o-mini` (~800 tokens)
-- **News Analyst**: 1 call to `gpt-4o-mini` (~1200 tokens)
-- **Trader Agent**: 1 call to `gpt-4o` (~1800 tokens)
-- **Total**: ~3800 tokens per symbol (~₹2-4/day per symbol)
-
-## Guardrails
-
-1. **JSON Parsing**: Fallback to HOLD if LLM response fails to parse
-2. **Token Limits**: Headlines truncated to 20, titles to 100 chars, summaries to 500 chars
-3. **Schema Validation**: All LLM outputs validated and sanitized
-4. **Error Handling**: Pipeline continues with safe defaults on any error
-
-## Running Tests
+Install baseline dependencies:
 
 ```bash
-python -m unittest trading_llm.tests.test_risk_and_parser
+pip install -r requirements.txt
 ```
 
-## Example Log Entry
+> **Tip:** if you only want the trading package, the minimal extras are `openai`, `openbb`, `numpy`, `pandas`, and `python-dotenv` (optional).
 
-```json
-{
-  "symbol": "INFY.NS",
-  "timestamp": "2025-01-31T11:00:00Z",
-  "technical": {
-    "data": {
-      "rsi": 46.3,
-      "macd_signal": "bullish_cross",
-      "atr_percent": 2.1,
-      "realized_vol_20": 0.22
-    },
-    "analysis": {
-      "signal": "bullish",
-      "confidence": 0.72,
-      "rationale": "RSI recovered from oversold, MACD bullish cross"
-    }
-  },
-  "news": {
-    "headlines_count": 15,
-    "analysis": {
-      "sentiment": "positive",
-      "confidence": 0.68,
-      "summary": "Strong earnings beat reported"
-    }
-  },
-  "trade": {
-    "decision": "BUY",
-    "confidence": 0.78,
-    "rationale": "Technical recovery confirmed with positive news support"
-  },
-  "risk": {
-    "approved": true,
-    "reason": "Within limits",
-    "realized_vol_20": 0.22,
-    "atr_percent": 2.1
-  },
-  "meta": {
-    "timings": {
-      "fetch": 1.2,
-      "analyst": 2.5,
-      "trader": 3.1,
-      "risk": 0.001,
-      "total": 6.8
-    }
-  }
-}
+---
+
+## 2. Key Configuration Flags (`trading_llm/core/config.py`)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MODEL` | `gpt-4o-mini` | Base model fallback for agents. |
+| `TA_MODEL` / `NEWS_MODEL` | inherits `MODEL` | Override per agent if needed. |
+| `TRADER_MODEL` | `gpt-4o` | Heavier reasoning model for final decision. |
+| `TIMEFRAMES` | `1D,15m` | Comma-separated list of timeframes to process. |
+| `DAILY_LOOKBACK_DAYS` | `120` | Days of OHLCV history for daily runs. |
+| `INTRADAY_LOOKBACK_DAYS` | `5` | Days of OHLCV history for intraday runs. |
+| `NEWS_LIMIT` | `10` | Default per-bucket headline fetch limit. |
+| `NEWS_LIMIT_SYMBOL/INDIA/GLOBAL` | — | Override per bucket. |
+| `NEWS_LIMIT_TOTAL` | `24` | Cap across all buckets. |
+| `NEWS_PER_HEADLINE` | `0` | If set to `1`, retain per-headline sentiment in output. |
+| `NEWS_SUMMARY` | `0` | If `1`, attempt driver extraction. |
+| `TA_BARS` | `48` | Bars kept in prompts per timeframe. |
+| `TA_PREC` | `3` | Numeric precision for compact CSV. |
+| `OPENAI_TIMEOUT` | `30` | Seconds for LLM client timeout. |
+| `RETRIES` / `BACKOFF` | `2` / `1.5` | Retry policy for LLM + data fetchers. |
+| `CACHE_DIR` | `.cache` | Location for news cache (shared helpers). |
+
+Set overrides via environment variables or `.env` file.
+
+---
+
+## 3. Running the Pipeline
+
+### Quick Start
+
+```bash
+python -m trading_llm.main --pretty
 ```
 
-## Next Steps (Phase 2+)
+Default behaviour:
+- Symbols: `INFY.NS`, `TCS.NS`, `RELIANCE.NS`
+- Timeframes: `1D` and `15m`
+- Logs appended to `trading_llm/logs/trade_log.jsonl`
 
-- `backtest_runner.py` - Backtest using logged decisions
-- `dashboard.py` - Streamlit visualization of decisions and PnL
+### Options
 
+```
+usage: python -m trading_llm.main [symbols ...] [--timeframes TF1,TF2] [--no-log] [--pretty]
+```
+
+Examples:
+
+- Run only daily timeframe on a single symbol without logging:
+  ```bash
+  python -m trading_llm.main HDFCBANK.NS --timeframes 1D --no-log --pretty
+  ```
+
+- Force intraday-only run with compact JSON output:
+  ```bash
+  python -m trading_llm.main SBIN.NS --timeframes 15m
+  ```
+
+Results stream to stdout and (unless `--no-log`) append to `logs/trade_log.jsonl` for downstream analytics.
+
+---
+
+## 4. Agent Details
+
+| Agent | Location | Model | Notes |
+|-------|----------|-------|-------|
+| TechnicalAnalyst | `agents/technical_analyst.py` | `TA_MODEL` | Consumes compact TA CSV and summary. Falls back to HOLD on parse failure. |
+| NewsAnalyst | `agents/news_analyst.py` | `NEWS_MODEL` | Works off headline titles only; defaults to neutral sentiment if LLM fails. |
+| TraderAgent | `agents/trader_agent.py` | `TRADER_MODEL` | Prioritises TA, uses news to nudge confidence / rationale. |
+| RiskManager | `agents/risk_manager.py` | rule-based | Rejects if volatility > 3% or consecutive identical decisions. |
+
+Shared helpers:
+- `data/fetchers.py` handles OHLCV retrieval, indicator enrichment, news payload preparation, and TA summaries.
+- `data/ta_builder.py` compresses indicator tables for prompt inclusion.
+- `core/utils.py` centralises retry logic, logging, and JSON parsing.
+- `core/prompts.py` contains compact, JSON-first prompt templates.
+
+---
+
+## 5. Logging & Backtesting Hooks
+
+Each run produces a JSON object per timeframe with:
+- `technical`, `news`, `trade`, and `risk` sections
+- Raw LLM responses for auditing (`meta.raw`)
+- Token usage metadata when available (`meta.usage`)
+
+Logs store in `trading_llm/logs/trade_log.jsonl`. You can tail the file:
+
+```bash
+tail -f trading_llm/logs/trade_log.jsonl
+```
+
+These structured entries are intended for later Phase 2/3 work (backtesting, dashboarding, or post-trade analysis).
+
+---
+
+## 6. Troubleshooting
+
+| Symptom | Likely Cause | Fix |
+|---------|--------------|-----|
+| `ModuleNotFoundError: No module named 'openai'` | OpenAI SDK missing | `pip install openai==1.*` |
+| `ModuleNotFoundError: No module named 'openbb'` | OpenBB SDK not installed/authenticated | Install OpenBB Platform, ensure you can `python -c "from openbb import obb"` |
+| News outputs are empty | Providers throttled / credentials missing | Reduce `NEWS_LIMIT*`, check provider keys, or disable news (`NEWS_ENABLED=0`). |
+| Frequent HOLD fallbacks | Prompt parse errors or missing data | Inspect `meta.raw` in log, ensure data fetchers returning adequate bars/headlines. |
+| High volatility rejections | Market is too volatile for rule | Increase `max_volatility` when instantiating `RiskManager` or adjust rule to your tolerance. |
+
+---
+
+## 7. Extending the Pipeline
+
+- Add more indicators: enrich `fetchers.compute_indicators` and update prompt schema.
+- Swap LLM vendors: adjust `core/llm_client.py` or last-mile prompts accordingly.
+- Plug into a backtester: consume `trade_log.jsonl` and map decisions against historical prices.
+- Hook alerts: trigger notifications when `RiskManager` approves a BUY/SELL with high confidence.
+
+Contributions are welcome—keep prompts concise, maintain JSON-first responses, and ensure token budgets remain under ~4k tokens per symbol per run.

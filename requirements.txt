@@ -1,6 +1,7 @@
 openbb
 pandas
 pandas-ta
+yfinance
 openai
 fastapi
 uvicorn[standard]

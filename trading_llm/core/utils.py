@@ -1,124 +1,38 @@
-"""Core utility functions for LLM calls, JSON parsing, and logging."""
+"""Utility functions for retries, caching, logging, and text normalization."""
 import json
 import os
 import time
 from datetime import datetime
-from typing import Dict, Any, Optional
-from openai import OpenAI
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional
+
+from . import config
 
 
-def llm_call(
-    prompt: str, 
-    model: str, 
-    timeout_s: int = 30, 
-    max_retries: int = 2, 
-    temperature: float = 0.2
-) -> str:
-    """
-    Make an LLM call with retries and exponential backoff.
-    
-    Args:
-        prompt: The prompt string to send
-        model: Model name (e.g., "gpt-4o-mini", "gpt-4o")
-        timeout_s: Request timeout in seconds
-        max_retries: Maximum number of retries
-        temperature: Sampling temperature
-    
-    Returns:
-        Raw response text from the model
-    
-    Raises:
-        Exception: If all retries fail
-    """
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise ValueError("OPENAI_API_KEY environment variable not set")
-    
-    client = OpenAI(api_key=api_key, timeout=timeout_s)
-    
-    last_exception = None
-    for attempt in range(max_retries + 1):
+def with_retries(fn: Callable, *, retries: int = None, backoff: float = None) -> Any:
+    """Execute function with retries and exponential backoff."""
+    retries = retries if retries is not None else config.RETRIES
+    backoff = backoff if backoff is not None else config.BACKOFF
+    last_exc = None
+    for i in range(retries + 1):
         try:
-            response = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=temperature,
-                response_format={"type": "json_object"},
-            )
-            return response.choices[0].message.content
+            return fn()
         except Exception as e:
-            last_exception = e
-            if attempt < max_retries:
-                # Exponential backoff
-                wait_time = (1.5 ** attempt)
-                time.sleep(wait_time)
-            else:
+            last_exc = e
+            if i == retries:
                 break
-    
-    raise Exception(f"LLM call failed after {max_retries + 1} attempts: {str(last_exception)}")
-
-
-def parse_json_response(text: str, fallback: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Parse JSON response with fallback handling.
-    
-    Args:
-        text: Raw text response from LLM
-        fallback: Fallback dict to return if parsing fails
-    
-    Returns:
-        Parsed JSON dict or fallback
-    """
-    if not text:
-        return fallback
-    
-    # Try to extract JSON from markdown code blocks if present
-    text_clean = text.strip()
-    if "```json" in text_clean:
-        start = text_clean.find("```json") + 7
-        end = text_clean.find("```", start)
-        if end > start:
-            text_clean = text_clean[start:end].strip()
-    elif "```" in text_clean:
-        start = text_clean.find("```") + 3
-        end = text_clean.find("```", start)
-        if end > start:
-            text_clean = text_clean[start:end].strip()
-    
-    try:
-        result = json.loads(text_clean)
-        if isinstance(result, dict):
-            return result
-        else:
-            return fallback
-    except json.JSONDecodeError:
-        return fallback
+            time.sleep(backoff ** i)
+    raise last_exc
 
 
 def load_cache(path: str) -> Dict[str, Any] | None:
-    """
-    Load cached data if fresh.
-    
-    Args:
-        path: Path to cache file
-    
-    Returns:
-        Cached data dict or None if cache is stale/missing
-    """
+    """Load cached data if fresh."""
     try:
-        import config
-        cache_ttl_min = config.NEWS_CACHE_TTL_MIN
-    except ImportError:
-        cache_ttl_min = 30  # Default 30 minutes
-    
-    try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path) as f:
             data = json.load(f)
-        ts = datetime.fromisoformat(data.get("timestamp", ""))
+        ts = datetime.fromisoformat(data.get("timestamp"))
         age = (datetime.utcnow() - ts).total_seconds() / 60.0
-        if age <= cache_ttl_min:
+        if age <= config.NEWS_CACHE_TTL_MIN:
             return data
     except Exception:
         pass
@@ -126,48 +40,119 @@ def load_cache(path: str) -> Dict[str, Any] | None:
 
 
 def save_cache(path: str, data: Dict[str, Any]) -> None:
-    """
-    Save data to cache with timestamp.
-    
-    Args:
-        path: Path to cache file
-        data: Data dict to cache
-    """
+    """Save data to cache with timestamp."""
     try:
-        import config
-        cache_dir = config.CACHE_DIR
-    except ImportError:
-        cache_dir = ".cache"
-    
-    try:
-        os.makedirs(os.path.dirname(path) if os.path.dirname(path) else cache_dir, exist_ok=True)
+        os.makedirs(config.CACHE_DIR, exist_ok=True)
         data = {**data, "timestamp": datetime.utcnow().isoformat()}
-        with open(path, "w", encoding="utf-8") as f:
+        with open(path, "w") as f:
             json.dump(data, f)
     except Exception:
         pass
 
 
-def save_trade_log(entry: Dict[str, Any], path: str = "trading_llm/logs/trade_log.jsonl") -> None:
-    """
-    Append a trade log entry to JSONL file.
-    
-    Args:
-        entry: Dictionary to log (will have timestamp added if missing)
-        path: Path to JSONL log file
-    """
-    # Ensure timestamp is present
-    if "timestamp" not in entry:
-        entry["timestamp"] = datetime.utcnow().isoformat() + "Z"
-    
-    # Ensure directory exists
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    
-    # Append to JSONL file
+def normalize_title(t: str) -> str:
+    """Normalize title for deduplication."""
+    return ''.join(ch for ch in t.lower() if ch.isalnum() or ch.isspace()).strip()
+
+
+def is_low_signal(title: str) -> bool:
+    """Check if title appears to be low-signal content."""
+    tl = title.lower()
+    return any(m in tl for m in config.LOW_SIGNAL_MARKERS)
+
+
+def dedupe_and_filter(headlines: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Remove duplicates and filter low-signal headlines."""
+    seen = set()
+    out = []
+    for h in headlines:
+        t = h.get("title") or ""
+        if not t or is_low_signal(t):
+            continue
+        key = normalize_title(t)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(h)
+    return out
+
+
+def parse_json_response(text: str) -> Optional[Dict[str, Any]]:
+    """Attempt to parse JSON content from an LLM response."""
+    if not text:
+        return None
     try:
-        with open(path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-    except Exception as e:
-        # Silently fail if logging fails (non-critical)
-        print(f"Warning: Failed to write trade log: {str(e)}")
+        return json.loads(text)
+    except json.JSONDecodeError:
+        # Attempt to locate JSON substring
+        start = text.find("{")
+        end = text.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            try:
+                return json.loads(text[start : end + 1])
+            except Exception:
+                return None
+    except Exception:
+        return None
+    return None
+
+
+_trade_log_path = Path(__file__).resolve().parents[1] / "logs" / "trade_log.jsonl"
+
+
+def save_trade_log(entry: Dict[str, Any], path: Path | str | None = None) -> None:
+    """Append a trade entry to the JSONL log."""
+    target = Path(path) if path else _trade_log_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("a", encoding="utf-8") as fh:
+        json.dump(entry, fh)
+        fh.write("\n")
+
+
+def load_last_trade(symbol: str, timeframe: str, path: Path | str | None = None) -> Optional[Dict[str, Any]]:
+    """Return the most recent trade decision for a symbol/timeframe if available."""
+    target = Path(path) if path else _trade_log_path
+    if not target.exists():
+        return None
+    try:
+        with target.open("r", encoding="utf-8") as fh:
+            for line in reversed(fh.readlines()):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if record.get("symbol") == symbol and record.get("timeframe") == timeframe:
+                    return record
+    except Exception:
+        return None
+    return None
+
+
+def llm_call(
+    system: str,
+    user: str,
+    *,
+    model: Optional[str] = None,
+    response_format: Optional[Dict[str, Any]] = None,
+    return_response: bool = False,
+    temperature: float = 0.0,
+    seed: Optional[int] = None,
+):
+    """Helper to invoke the shared LLM client with retries and JSON response format."""
+    from .llm_client import LLMClient  # Lazy import to avoid circular dependency
+
+    client = LLMClient()
+    fmt = response_format if response_format is not None else {"type": "json_object"}
+    return client.call(
+        system,
+        user,
+        model=model,
+        return_response=return_response,
+        response_format=fmt,
+        temperature=temperature,
+        seed=seed,
+    )
 

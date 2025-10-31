@@ -1,6 +1,4 @@
 """News fetching, sentiment analysis, and weighted aggregation."""
-import json
-import time
 from datetime import datetime
 from typing import Any, Dict, List
 
@@ -86,25 +84,37 @@ def cap_headlines_across_buckets(
     return result
 
 
-def prepare_news_payload(sym: str, limit: int = 10) -> Dict[str, Any]:
-    """Prepare news payload with provider fallback and capping."""
+def prepare_news_payload(
+    sym: str,
+    limit: int | None = None,
+    *,
+    limit_symbol: int | None = None,
+    limit_india: int | None = None,
+    limit_global: int | None = None,
+    total_limit: int | None = None,
+) -> Dict[str, Any]:
+    """Prepare news payload with provider fallback and per-bucket limits.
+
+    Backwards-compatible: if only ``limit`` is provided, it is used for all buckets.
+    Otherwise falls back to per-bucket config values.
+    """
+
+    # Resolve per-bucket limits
+    per_symbol = limit_symbol if limit_symbol is not None else (limit if limit is not None else config.NEWS_LIMIT_SYMBOL)
+    per_india = limit_india if limit_india is not None else (limit if limit is not None else config.NEWS_LIMIT_INDIA)
+    per_global = limit_global if limit_global is not None else (limit if limit is not None else config.NEWS_LIMIT_GLOBAL)
+    cap_total = total_limit if total_limit is not None else config.NEWS_LIMIT_TOTAL
+
     def _fetch_with_retry(symbol: str, providers: List[str], per_bucket: int) -> List[Dict[str, Any]]:
         return utils.with_retries(lambda: fetch_company_headlines(symbol, providers, per_bucket))
 
     # Use provider fallback for company news
-    symbol_headlines = _fetch_with_retry(sym, config.NEWS_PROVIDERS_COMPANY, limit)
+    symbol_headlines = _fetch_with_retry(sym, config.NEWS_PROVIDERS_COMPANY, per_symbol)
     
     # For indices, try providers if available, otherwise fall back to yfinance
-    india_headlines = _fetch_with_retry(
-        "^NSEI", 
-        config.NEWS_PROVIDERS_WORLD if config.NEWS_PROVIDERS_WORLD else ["yfinance"], 
-        limit
-    )
-    global_headlines = _fetch_with_retry(
-        "^GSPC", 
-        config.NEWS_PROVIDERS_WORLD if config.NEWS_PROVIDERS_WORLD else ["yfinance"], 
-        limit
-    )
+    world_providers = config.NEWS_PROVIDERS_WORLD if config.NEWS_PROVIDERS_WORLD else ["yfinance"]
+    india_headlines = _fetch_with_retry("^NSEI", world_providers, per_india)
+    global_headlines = _fetch_with_retry("^GSPC", world_providers, per_global)
     
     headlines_dict = {
         "symbol_headlines": symbol_headlines,
@@ -113,7 +123,7 @@ def prepare_news_payload(sym: str, limit: int = 10) -> Dict[str, Any]:
     }
     
     # Cap total headlines across buckets
-    capped = cap_headlines_across_buckets(headlines_dict, config.NEWS_LIMIT_TOTAL)
+    capped = cap_headlines_across_buckets(headlines_dict, cap_total)
     
     return {
         "symbol": sym,

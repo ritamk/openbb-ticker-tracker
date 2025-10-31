@@ -1,2 +1,0 @@
-"""Trading agent modules"""
-
