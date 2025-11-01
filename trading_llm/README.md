@@ -132,6 +132,7 @@ These structured entries are intended for later Phase 2/3 work (backtesting, das
 | `ModuleNotFoundError: No module named 'openai'` | OpenAI SDK missing | `pip install openai==1.*` |
 | `ModuleNotFoundError: No module named 'openbb'` | OpenBB SDK not installed/authenticated | Install OpenBB Platform, ensure you can `python -c "from openbb import obb"` |
 | News outputs are empty | Providers throttled / credentials missing | Reduce `NEWS_LIMIT*`, check provider keys, or disable news (`NEWS_ENABLED=0`). |
+| **Docker returns empty news/ticker data** | **OpenBB credentials not mounted** | **See `DOCKER_SETUP.md` - mount `~/.openbb_platform` as volume** |
 | Frequent HOLD fallbacks | Prompt parse errors or missing data | Inspect `meta.raw` in log, ensure data fetchers returning adequate bars/headlines. |
 | High volatility rejections | Market is too volatile for rule | Increase `max_volatility` when instantiating `RiskManager` or adjust rule to your tolerance. |
 
