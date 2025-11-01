@@ -11,12 +11,24 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
        build-essential \
        curl \
+       ca-certificates \
+       tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
+
+# Build OpenBB extensions AFTER copying application code
+# This generates the static assets needed for OpenBB to discover installed extensions
+# Must be done after COPY to ensure no file conflicts
+RUN python -c "from openbb_core.app.static.package_builder import PackageBuilder; PackageBuilder().build()" \
+    && find /usr/local/lib/python3.13/site-packages/openbb* -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+
+# Create OpenBB platform directory for credentials
+# This directory should be mounted as a volume at runtime with the host's ~/.openbb_platform
+RUN mkdir -p /root/.openbb_platform
 
 ENV PORT=8080
 

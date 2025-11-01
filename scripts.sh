@@ -14,11 +14,17 @@ build_docker_image() {
     docker build -t ritamk/brok .
 }
 
+# Build fresh docker image with no cache
+build_docker_image_no_cache() {
+    docker build --no-cache -t ritamk/brok .
+}
+
 # Run docker image
 run_docker_image() {
     docker run --rm -p 8080:8080 \
         --env-file .env \
         -e PORT=8080 \
+        -v ~/.openbb_platform:/root/.openbb_platform:ro \
         ritamk/brok
 }
 
@@ -26,6 +32,9 @@ run_docker_image() {
 show_help() {
     echo "Available scripts:"
     echo "  run_main  - Execute trading_llm main module with pretty output"
+    echo "  build_docker_image - Build docker image"
+    echo "  build_docker_image_no_cache - Build fresh docker image with no cache"
+    echo "  run_docker_image - Run docker image"
     # Add more scripts here as you add them
 }
 
@@ -40,11 +49,11 @@ main() {
         build_docker_image)
             build_docker_image
             ;;
+        build_docker_image_no_cache)
+            build_docker_image_no_cache
+            ;;
         run_docker_image)
             run_docker_image
-            ;;
-        push_docker_image_gcloud)
-            push_docker_image_gcloud
             ;;
         help|--help|-h)
             show_help
