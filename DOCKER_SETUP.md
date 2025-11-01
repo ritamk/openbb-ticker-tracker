@@ -82,9 +82,38 @@ The `scripts.sh` file has been updated:
 ./scripts.sh run_docker_image
 ```
 
-## For Production Deployment (Cloud Run, etc.)
+## For Production Deployment (Google Cloud Run)
 
-For production environments where you can't mount local volumes, you have several options:
+### Quick Deploy
+
+The Dockerfile fix is already in place. Simply deploy the updated image:
+
+```bash
+# Using the deployment script
+./scripts.sh deploy_cloud_run
+
+# Or manually
+gcloud builds submit --tag gcr.io/PROJECT_ID/brok-api
+gcloud run deploy brok-api --image gcr.io/PROJECT_ID/brok-api --region asia-south2
+```
+
+**Important**: The OpenBB extension build step now runs automatically during the Docker build, so no additional configuration is needed for basic functionality.
+
+### Environment Variables
+
+Set these in Cloud Run for full functionality:
+
+**Required:**
+- `OPENAI_API_KEY` - Your OpenAI API key
+
+**Optional (with defaults):**
+- `NEWS_ENABLED=1`
+- `NEWS_LIMIT=10`
+- `TIMEFRAMES=1D,15m`
+
+### OpenBB Credentials (Optional)
+
+For premium data providers, you have several options:
 
 ### Option 1: Environment Variables (Recommended)
 
