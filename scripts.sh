@@ -11,7 +11,7 @@ run_main() {
 
 # Build docker image
 build_docker_image() {
-    docker build -t trading_llm .
+    docker build -t ritamk/brok .
 }
 
 # Run docker image
@@ -19,7 +19,7 @@ run_docker_image() {
     docker run --rm -p 8080:8080 \
         --env-file .env \
         -e PORT=8080 \
-        trading-llm-api
+        ritamk/brok
 }
 
 # Display available scripts
@@ -42,6 +42,9 @@ main() {
             ;;
         run_docker_image)
             run_docker_image
+            ;;
+        push_docker_image_gcloud)
+            push_docker_image_gcloud
             ;;
         help|--help|-h)
             show_help

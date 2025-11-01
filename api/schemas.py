@@ -49,3 +49,27 @@ class TickerDataResponse(BaseModel):
     timeframes: List[str]
     runs: List[TradingRun]
 
+
+
+class TickerSearchResponse(BaseModel):
+    """Response model for company-name-to-ticker search."""
+
+    ticker: str
+    name: Optional[str] = None
+
+
+class TickerNewsResponse(BaseModel):
+    """News items with basic quote details for a ticker."""
+
+    symbol: str
+    price: Optional[float] = None
+    change: Optional[float] = None
+    change_percent: Optional[float] = None
+    currency: Optional[str] = None
+    quote_url: Optional[str] = None
+    items: List["TickerNewsItem"]
+
+
+class TickerNewsItem(BaseModel):
+    url: Optional[str] = None
+    headline: Optional[str] = None
