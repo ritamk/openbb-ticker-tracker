@@ -11,6 +11,7 @@ app.add_middleware(
     allow_origins=[
         "https://brok-c367d.web.app",
         "https://brok-c367d.firebaseapp.com",
+        "https://brok.ritamkon.ar",
         "http://localhost:5173",
     ],
     allow_credentials=True,
