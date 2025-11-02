@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 from openbb import obb
+import yfinance as yf
 
 from ..core import config, utils
 
@@ -56,10 +57,11 @@ def _fetch_company_headlines(symbol: str, provider: str, per_bucket: int) -> Lis
     df = ob_result.to_dataframe()
     if df is None or df.empty:
         return []
-    cols = [c for c in ["date", "title", "url", "source"] if c in df.columns]
+    
+    # Select available columns (removed date)
+    cols = [c for c in ["title", "url", "source"] if c in df.columns]
     df = df[cols].dropna(subset=[c for c in ["title", "url"] if c in cols])
-    if "date" in df.columns:
-        df["date"] = df["date"].astype(str)
+    
     records = df.to_dict(orient="records")
     return utils.dedupe_and_filter(records)[:per_bucket]
 
@@ -134,11 +136,8 @@ def prepare_news_payload(
         return []
 
     symbol_headlines = _with_providers(symbol, config.NEWS_PROVIDERS_COMPANY, per_symbol)
-    world_providers = (
-        config.NEWS_PROVIDERS_WORLD if config.NEWS_PROVIDERS_WORLD else ["yfinance"]
-    )
-    india_headlines = _with_providers("^NSEI", world_providers, per_india)
-    global_headlines = _with_providers("^GSPC", world_providers, per_global)
+    india_headlines = _with_providers("^NSEI", ["yfinance"], per_india)
+    global_headlines = _with_providers("SPY", ["yfinance"], per_global)
 
     capped = cap_headlines_across_buckets(
         {
@@ -150,6 +149,49 @@ def prepare_news_payload(
     )
 
     return {"symbol": symbol, **capped}
+
+
+# ---------------------------------------------------------------------------
+# Company info helpers
+# ---------------------------------------------------------------------------
+
+
+def get_company_long_name(symbol: str) -> Optional[str]:
+    """Fetch the long name (company name) for a given ticker symbol."""
+    try:
+        ticker = yf.Ticker(symbol)
+        info = ticker.info
+        return info.get("longName") or info.get("shortName")
+    except Exception:
+        return None
+
+
+def get_company_info(symbol: str) -> Dict[str, Any]:
+    """Fetch company info including long name, current price, and change percentage."""
+    try:
+        ticker = yf.Ticker(symbol)
+        info = ticker.info
+        
+        long_name = info.get("longName") or info.get("shortName")
+        current_price = info.get("currentPrice") or info.get("regularMarketPrice")
+        
+        # Calculate change percentage
+        previous_close = info.get("previousClose") or info.get("regularMarketPreviousClose")
+        change_percent = None
+        if current_price and previous_close and previous_close != 0:
+            change_percent = ((current_price - previous_close) / previous_close) * 100
+        
+        return {
+            "long_name": long_name,
+            "price": current_price,
+            "change_percent": change_percent,
+        }
+    except Exception:
+        return {
+            "long_name": None,
+            "price": None,
+            "change_percent": None,
+        }
 
 
 # ---------------------------------------------------------------------------

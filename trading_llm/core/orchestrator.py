@@ -39,6 +39,18 @@ class TradingOrchestrator:
         save_log: bool = True,
     ) -> Dict[str, Any]:
         tfs = timeframes or config.TIMEFRAMES
+        
+        # Fetch company info (long name, price, change)
+        company_info = fetchers.get_company_info(symbol)
+        long_name = company_info.get("long_name")
+        price = company_info.get("price")
+        change_percent = company_info.get("change_percent")
+        
+        # Format change percentage with TA_PREC precision
+        change_str = None
+        if change_percent is not None:
+            change_str = f"{change_percent:.{config.TA_PREC}f}%"
+        
         news_payload: Optional[Dict[str, Any]] = None
         news_result: Optional[Dict[str, Any]] = None
         news_usage: Optional[Dict[str, Any]] = None
@@ -129,6 +141,9 @@ class TradingOrchestrator:
 
         return {
             "symbol": symbol,
+            "long_name": long_name,
+            "price": price,
+            "change": change_str,
             "generated_at": datetime.utcnow().isoformat(),
             "results": results,
             "news": news_result,

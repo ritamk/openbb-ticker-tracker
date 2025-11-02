@@ -16,7 +16,7 @@ NEWS_MODEL = os.getenv("NEWS_MODEL", MODEL)
 TRADER_MODEL = os.getenv("TRADER_MODEL", "gpt-4o")
 
 # Timeframe support
-DEFAULT_TIMEFRAMES: List[str] = ["1D", "15m"]
+DEFAULT_TIMEFRAMES: List[str] = ["1D", "15m", "5m", "30D"]
 _timeframes_env = os.getenv("DEFAULT_TIMEFRAMES") or os.getenv("TIMEFRAMES")
 TIMEFRAMES: List[str] = [
     tf.strip() for tf in (_timeframes_env.split(",") if _timeframes_env else DEFAULT_TIMEFRAMES)
@@ -27,6 +27,7 @@ if not TIMEFRAMES:
 
 DAILY_LOOKBACK_DAYS = int(os.getenv("DAILY_LOOKBACK_DAYS", "120"))
 INTRADAY_LOOKBACK_DAYS = int(os.getenv("INTRADAY_LOOKBACK_DAYS", "5"))
+LONG_TERM_LOOKBACK_DAYS = int(os.getenv("LONG_TERM_LOOKBACK_DAYS", "365"))
 
 TIMEFRAME_CONFIG = {
     "1D": {
@@ -36,6 +37,14 @@ TIMEFRAME_CONFIG = {
     "15m": {
         "interval": "15m",
         "lookback_days": INTRADAY_LOOKBACK_DAYS,
+    },
+    "5m": {
+        "interval": "5m",
+        "lookback_days": INTRADAY_LOOKBACK_DAYS,
+    },
+    "30D": {
+        "interval": "30d",
+        "lookback_days": LONG_TERM_LOOKBACK_DAYS,
     },
 }
 
@@ -57,7 +66,7 @@ NEWS_PROVIDERS_COMPANY = [
     if p.strip()
 ]
 NEWS_PROVIDERS_WORLD = [
-    p.strip() for p in os.getenv("NEWS_PROVIDERS_WORLD", "fmp,tiingo").split(",") 
+    p.strip() for p in os.getenv("NEWS_PROVIDERS_WORLD", "yfinance,fmp,tiingo").split(",") 
     if p.strip()
 ]
 
