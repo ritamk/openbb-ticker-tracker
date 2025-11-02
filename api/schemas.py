@@ -34,6 +34,9 @@ class TickerDataRequest(BaseModel):
 
 class TradingRun(BaseModel):
     symbol: str
+    long_name: Optional[str] = None
+    price: Optional[float] = None
+    change: Optional[str] = None
     generated_at: str
     results: List[Dict[str, Any]]
     news: Optional[Dict[str, Any]] = None
