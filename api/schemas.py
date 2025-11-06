@@ -41,6 +41,8 @@ class TradingRun(BaseModel):
     results: List[Dict[str, Any]]
     news: Optional[Dict[str, Any]] = None
     news_payload: Optional[Dict[str, Any]] = None
+    fundamental: Optional[Dict[str, Any]] = None
+    fundamental_payload: Optional[Dict[str, Any]] = None
     meta: Optional[Dict[str, Any]] = None
 
     class Config:
@@ -76,3 +78,12 @@ class TickerNewsResponse(BaseModel):
 class TickerNewsItem(BaseModel):
     url: Optional[str] = None
     headline: Optional[str] = None
+
+
+class TickerFundamentalResponse(BaseModel):
+    """Fundamental metrics response for a ticker."""
+
+    symbol: str
+    metrics: Dict[str, Any]
+    raw_metrics: Optional[Dict[str, Any]] = None
+    generated_at: str

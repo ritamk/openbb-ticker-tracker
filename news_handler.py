@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import Any, Dict, List
 
-from openbb import obb
+import yfinance as yf
 
 import config
 import utils
@@ -41,21 +41,31 @@ def aggregate_weighted(per_list: List[Dict[str, Any]], headlines: List[Dict[str,
 
 
 def fetch_company_headlines(sym: str, providers: List[str], per_bucket: int) -> List[Dict[str, Any]]:
-    """Fetch company headlines with provider fallback."""
-    for p in providers:
-        try:
-            ob_result = obb.news.company(symbol=sym, provider=p, limit=per_bucket)
-            df = ob_result.to_dataframe()
-            if df is None or df.empty:
-                continue
-            cols = [c for c in ["date", "title", "url", "source"] if c in df.columns]
-            df = df[cols].dropna(subset=[c for c in ["title", "url"] if c in cols])
-            if "date" in df.columns:
-                df["date"] = df["date"].astype(str)
-            return utils.dedupe_and_filter(df.to_dict(orient="records"))[:per_bucket]
-        except Exception:
-            continue
-    return []
+    """Fetch company headlines using yfinance Search."""
+    try:
+        # Use yfinance Search for news (ignore providers parameter since yfinance handles this internally)
+        search_result = yf.Search(sym, news_count=per_bucket)
+        news_items = search_result.news if hasattr(search_result, 'news') and search_result.news else []
+
+        if not news_items:
+            return []
+
+        # Convert yfinance news format to our expected format
+        records = []
+        for item in news_items:
+            record = {
+                "title": item.get("title", ""),
+                "url": item.get("link", ""),
+                "source": item.get("publisher", "Yahoo Finance"),
+                "date": item.get("providerPublishTime", "") if isinstance(item.get("providerPublishTime"), str) else ""
+            }
+            # Only include if we have at least title or url
+            if record["title"] or record["url"]:
+                records.append(record)
+
+        return utils.dedupe_and_filter(records)[:per_bucket]
+    except Exception:
+        return []
 
 
 def cap_headlines_across_buckets(

@@ -1,13 +1,13 @@
 """Data fetchers for technical indicators and market news."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
-from openbb import obb
 import yfinance as yf
+from yfinance.utils import auto_adjust
 
 from ..core import config, utils
 
@@ -53,17 +53,31 @@ def aggregate_weighted(per_list: List[Dict[str, Any]], headlines: List[Dict[str,
 
 
 def _fetch_company_headlines(symbol: str, provider: str, per_bucket: int) -> List[Dict[str, Any]]:
-    ob_result = obb.news.company(symbol=symbol, provider=provider, limit=per_bucket)
-    df = ob_result.to_dataframe()
-    if df is None or df.empty:
+    try:
+        # Use yfinance Search for news
+        search_result = yf.Search(symbol, news_count=per_bucket)
+        news_items = search_result.news if hasattr(search_result, 'news') and search_result.news else []
+
+        if not news_items:
+            return []
+
+        # Convert yfinance news format to our expected format
+        records = []
+        for item in news_items:
+            record = {
+                "title": item.get("title", ""),
+                "url": item.get("link", ""),
+                "source": item.get("publisher", "Yahoo Finance"),
+                # Convert timestamp if available
+                "date": item.get("providerPublishTime", "") if isinstance(item.get("providerPublishTime"), str) else ""
+            }
+            # Only include if we have at least title or url
+            if record["title"] or record["url"]:
+                records.append(record)
+
+        return utils.dedupe_and_filter(records)[:per_bucket]
+    except Exception:
         return []
-    
-    # Select available columns (removed date)
-    cols = [c for c in ["title", "url", "source"] if c in df.columns]
-    df = df[cols].dropna(subset=[c for c in ["title", "url"] if c in cols])
-    
-    records = df.to_dict(orient="records")
-    return utils.dedupe_and_filter(records)[:per_bucket]
 
 
 def cap_headlines_across_buckets(
@@ -174,6 +188,7 @@ def get_company_info(symbol: str) -> Dict[str, Any]:
         
         long_name = info.get("longName") or info.get("shortName")
         current_price = info.get("currentPrice") or info.get("regularMarketPrice")
+        currency = info.get("currency")
         
         # Calculate change percentage
         previous_close = info.get("previousClose") or info.get("regularMarketPreviousClose")
@@ -185,13 +200,149 @@ def get_company_info(symbol: str) -> Dict[str, Any]:
             "long_name": long_name,
             "price": current_price,
             "change_percent": change_percent,
+            "currency": currency,
         }
     except Exception:
         return {
             "long_name": None,
             "price": None,
             "change_percent": None,
+            "currency": None,
         }
+
+
+def get_fundamental_data(symbol: str) -> Dict[str, Any]:
+    """Fetch comprehensive fundamental metrics for a given ticker symbol.
+    
+    Extracts key financial metrics including valuation ratios, profitability metrics,
+    growth rates, and ownership data from yfinance.
+    """
+    try:
+        ticker = yf.Ticker(symbol)
+        info = ticker.info
+        
+        # Helper to safely extract numeric values
+        def safe_float(key: str) -> Optional[float]:
+            val = info.get(key)
+            if val is None or val == "N/A":
+                return None
+            try:
+                return float(val)
+            except (ValueError, TypeError):
+                return None
+        
+        # Valuation metrics
+        pe_ratio = safe_float("trailingPE") or safe_float("forwardPE")
+        pb_ratio = safe_float("priceToBook")
+        ev_ebitda = safe_float("enterpriseToEbitda")
+        
+        # Profitability metrics
+        roe = safe_float("returnOnEquity")
+        profit_margin = safe_float("profitMargins")
+        operating_margin = safe_float("operatingMargins")
+        gross_margin = safe_float("grossMargins")
+        
+        # Growth metrics
+        revenue_growth = safe_float("revenueGrowth")
+        earnings_growth = safe_float("earningsGrowth") or safe_float("earningsQuarterlyGrowth")
+        
+        # Financial health
+        debt_to_equity = safe_float("debtToEquity")
+        
+        # Size and ownership
+        market_cap = safe_float("marketCap")
+        institutional_holdings = safe_float("heldPercentInstitutions")
+        insider_holdings = safe_float("heldPercentInsiders")
+        
+        # Additional context
+        sector = info.get("sector")
+        industry = info.get("industry")
+        
+        return {
+            "pe_ratio": pe_ratio,
+            "pb_ratio": pb_ratio,
+            "roe": roe,
+            "debt_to_equity": debt_to_equity,
+            "profit_margin": profit_margin,
+            "operating_margin": operating_margin,
+            "gross_margin": gross_margin,
+            "revenue_growth": revenue_growth,
+            "earnings_growth": earnings_growth,
+            "ev_ebitda": ev_ebitda,
+            "market_cap": market_cap,
+            "institutional_holdings": institutional_holdings,
+            "insider_holdings": insider_holdings,
+            "sector": sector,
+            "industry": industry,
+        }
+    except Exception:
+        return {
+            "pe_ratio": None,
+            "pb_ratio": None,
+            "roe": None,
+            "debt_to_equity": None,
+            "profit_margin": None,
+            "operating_margin": None,
+            "gross_margin": None,
+            "revenue_growth": None,
+            "earnings_growth": None,
+            "ev_ebitda": None,
+            "market_cap": None,
+            "institutional_holdings": None,
+            "insider_holdings": None,
+            "sector": None,
+            "industry": None,
+        }
+
+
+def prepare_fundamental_payload(symbol: str) -> Dict[str, Any]:
+    """Prepare fundamental data payload for LLM consumption.
+    
+    Fetches fundamental metrics and formats them in a readable structure
+    suitable for the fundamental analyst agent.
+    """
+    fundamental_data = get_fundamental_data(symbol)
+    
+    # Format percentages and large numbers for readability
+    def format_metric(value: Optional[float], is_percentage: bool = False, is_large_number: bool = False) -> str:
+        if value is None:
+            return "N/A"
+        if is_percentage:
+            return f"{value * 100:.2f}%"
+        if is_large_number:
+            if value >= 1e12:
+                return f"${value / 1e12:.2f}T"
+            elif value >= 1e9:
+                return f"${value / 1e9:.2f}B"
+            elif value >= 1e6:
+                return f"${value / 1e6:.2f}M"
+            return f"${value:,.0f}"
+        return f"{value:.2f}"
+    
+    formatted_metrics = {
+        "pe_ratio": format_metric(fundamental_data["pe_ratio"]),
+        "pb_ratio": format_metric(fundamental_data["pb_ratio"]),
+        "roe": format_metric(fundamental_data["roe"], is_percentage=True),
+        "debt_to_equity": format_metric(fundamental_data["debt_to_equity"]),
+        "profit_margin": format_metric(fundamental_data["profit_margin"], is_percentage=True),
+        "operating_margin": format_metric(fundamental_data["operating_margin"], is_percentage=True),
+        "gross_margin": format_metric(fundamental_data["gross_margin"], is_percentage=True),
+        "revenue_growth": format_metric(fundamental_data["revenue_growth"], is_percentage=True),
+        "earnings_growth": format_metric(fundamental_data["earnings_growth"], is_percentage=True),
+        "ev_ebitda": format_metric(fundamental_data["ev_ebitda"]),
+        "market_cap": format_metric(fundamental_data["market_cap"], is_large_number=True),
+        "institutional_holdings": format_metric(fundamental_data["institutional_holdings"], is_percentage=True),
+        "insider_holdings": format_metric(fundamental_data["insider_holdings"], is_percentage=True),
+        "sector": fundamental_data["sector"] or "N/A",
+        "industry": fundamental_data["industry"] or "N/A",
+    }
+    
+    return {
+        "symbol": symbol,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "metrics": formatted_metrics,
+        "raw_metrics": fundamental_data,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -200,15 +351,16 @@ def get_company_info(symbol: str) -> Dict[str, Any]:
 
 
 def _fetch_price_dataframe(symbol: str, interval: str, lookback_days: int) -> pd.DataFrame:
-    start_date = (datetime.utcnow() - timedelta(days=lookback_days)).date().isoformat()
+    start_date = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).date().isoformat()
 
     def _request() -> pd.DataFrame:
-        response = obb.equity.price.historical(
-            symbol=symbol,
+        ticker = yf.Ticker(symbol)
+        df = ticker.history(
+            start=start_date,
             interval=interval,
-            start_date=start_date,
+            auto_adjust=True, # Adjust for splits/dividends
+            prepost=False # Exclude pre/post market data
         )
-        df = response.to_dataframe()
         if df is None or df.empty:
             raise ValueError("empty price dataframe")
         return df
@@ -219,16 +371,33 @@ def _fetch_price_dataframe(symbol: str, interval: str, lookback_days: int) -> pd
 def _standardize_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
     frame = df.copy()
     frame.columns = [c.lower() for c in frame.columns]
-    if "date" not in frame.columns and frame.index.name:
+
+    # Handle the date/index properly
+    if frame.index.name and frame.index.name.lower() == 'date':
+        # Index is named 'Date', reset it to make it a column
         frame = frame.reset_index()
-    if "date" not in frame.columns and "timestamp" in frame.columns:
-        frame["date"] = frame["timestamp"]
-    if "timestamp" in frame.columns:
+    elif not frame.index.name and isinstance(frame.index, pd.DatetimeIndex):
+        # Index is DatetimeIndex but not named, reset it
+        frame = frame.reset_index()
+
+    # Now find the date column (it might be 'Date', 'date', or from reset_index)
+    date_col = None
+    if "date" in frame.columns:
+        date_col = "date"
+    elif "Date" in frame.columns:
+        date_col = "Date"
+
+    if date_col:
+        frame["timestamp"] = pd.to_datetime(frame[date_col])
+    elif "timestamp" in frame.columns:
         frame["timestamp"] = pd.to_datetime(frame["timestamp"])
-    elif "date" in frame.columns:
-        frame["timestamp"] = pd.to_datetime(frame["date"])
     else:
-        frame["timestamp"] = pd.to_datetime(frame.index)
+        # Fallback - try to convert index if it's still DatetimeIndex
+        if isinstance(frame.index, pd.DatetimeIndex):
+            frame["timestamp"] = pd.to_datetime(frame.index)
+            frame = frame.reset_index(drop=True)
+        else:
+            raise ValueError("No date/timestamp column found in data")
 
     for col in ["open", "high", "low", "close", "volume"]:
         if col not in frame.columns:

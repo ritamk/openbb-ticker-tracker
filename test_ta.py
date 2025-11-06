@@ -1,12 +1,17 @@
-from openbb import obb
+import yfinance as yf
 import pandas as pd
 import pandas_ta as ta
 import json
 
 def main(symbol: str = "RELIANCE.NS"):
     # NSE; use .BO for BSE
-    ohlcv = obb.equity.price.historical(symbol, provider="yfinance", start_date="2024-01-01")
-    df = ohlcv.to_dataframe().copy()
+    ticker = yf.Ticker(symbol)
+    df = ticker.history(
+        start="2024-01-01",
+        interval="1d",
+        auto_adjust=True, # Adjust for splits/dividends
+        prepost=False # Exclude pre/post market data
+    )
     # Ensure time order and datetime index regardless of input format
     if "date" in df.columns:
         df = df.sort_values("date").set_index("date")

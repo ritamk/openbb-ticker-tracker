@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from ..agents.fundamental_analyst import FundamentalAnalyst
 from ..agents.news_analyst import NewsAnalyst
 from ..agents.risk_manager import RiskManager
 from ..agents.technical_analyst import TechnicalAnalyst
@@ -28,6 +29,7 @@ class TradingOrchestrator:
     def __init__(self) -> None:
         self.tech_agent = TechnicalAnalyst()
         self.news_agent = NewsAnalyst()
+        self.fundamental_agent = FundamentalAnalyst()
         self.trader_agent = TraderAgent()
         self.risk_manager = RiskManager()
 
@@ -45,6 +47,7 @@ class TradingOrchestrator:
         long_name = company_info.get("long_name")
         price = company_info.get("price")
         change_percent = company_info.get("change_percent")
+        currency = company_info.get("currency")
         
         # Format change percentage with TA_PREC precision
         change_str = None
@@ -70,8 +73,21 @@ class TradingOrchestrator:
                 "global_headlines": [],
             }
 
+        # Fetch fundamental analysis
+        fundamental_payload: Optional[Dict[str, Any]] = None
+        fundamental_result: Optional[Dict[str, Any]] = None
+        fundamental_usage: Optional[Dict[str, Any]] = None
+        fundamental_raw: Optional[str] = None
+
+        if config.FUNDAMENTAL_ENABLED:
+            fundamental_payload = fetchers.prepare_fundamental_payload(symbol)
+            fundamental_analysis = self.fundamental_agent.analyze(symbol, fundamental_payload)
+            fundamental_result = fundamental_analysis.get("fundamental")
+            fundamental_usage = fundamental_analysis.get("usage")
+            fundamental_raw = fundamental_analysis.get("raw")
+
         results: List[Dict[str, Any]] = []
-        aggregate_usage: Dict[str, Any] = {"news": news_usage}
+        aggregate_usage: Dict[str, Any] = {"news": news_usage, "fundamental": fundamental_usage}
 
         for timeframe in tfs:
             rows = fetchers.get_indicator_rows(symbol, timeframe)
@@ -99,6 +115,7 @@ class TradingOrchestrator:
                 timeframe,
                 technical,
                 trade_input_news,
+                fundamental_result,
             )
             trade = trade_analysis.get("trade")
             aggregate_usage.setdefault("trader", {})[timeframe] = trade_analysis.get("usage")
@@ -118,6 +135,7 @@ class TradingOrchestrator:
                 "timestamp": datetime.utcnow().isoformat(),
                 "technical": technical,
                 "news": news_result,
+                "fundamental": fundamental_result,
                 "trade": trade,
                 "risk": risk,
                 "meta": {
@@ -126,11 +144,13 @@ class TradingOrchestrator:
                         "technical": ta_usage,
                         "trader": trade_analysis.get("usage"),
                         "news": news_usage,
+                        "fundamental": fundamental_usage,
                     },
                     "raw": {
                         "technical": ta_analysis.get("raw"),
                         "trader": trade_analysis.get("raw"),
                         "news": news_raw,
+                        "fundamental": fundamental_raw,
                     },
                 },
             }
@@ -142,12 +162,15 @@ class TradingOrchestrator:
         return {
             "symbol": symbol,
             "long_name": long_name,
+            "currency": currency,
             "price": price,
             "change": change_str,
             "generated_at": datetime.utcnow().isoformat(),
             "results": results,
             "news": news_result,
             "news_payload": news_payload,
+            "fundamental": fundamental_result,
+            "fundamental_payload": fundamental_payload,
             "meta": {
                 "usage": aggregate_usage,
             },
