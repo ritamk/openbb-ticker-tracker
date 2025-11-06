@@ -23,10 +23,21 @@ class TraderAgent:
         timeframe: str,
         technical_report: Dict[str, Any],
         news_report: Dict[str, Any],
+        fundamental_report: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Invoke the trader agent and return structured decision + metadata."""
         tech_blob = json.dumps(technical_report, ensure_ascii=False, separators=(",", ":"))
         news_blob = json.dumps(news_report, ensure_ascii=False, separators=(",", ":"))
+        
+        # Handle fundamental report (may be None if disabled)
+        if fundamental_report:
+            fundamental_blob = json.dumps(fundamental_report, ensure_ascii=False, separators=(",", ":"))
+        else:
+            fundamental_blob = json.dumps(
+                {"signal": "fair", "summary": "Fundamental analysis disabled", "confidence": 0.0},
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
 
         system_prompt = prompts.TRADER_PROMPT["system"]
         user_prompt = prompts.TRADER_PROMPT["template"].format(
@@ -34,6 +45,7 @@ class TraderAgent:
             timeframe=timeframe,
             technical_report=tech_blob,
             news_report=news_blob,
+            fundamental_report=fundamental_blob,
         )
 
         try:

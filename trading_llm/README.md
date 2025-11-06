@@ -14,11 +14,10 @@ All runs are orchestrated by `core/orchestrator.py`, with results saved as JSON 
 ## 1. Environment Prerequisites
 
 - Python 3.10+
-- [OpenBB Platform](https://docs.openbb.co/platform) (or compatible SDK) installed and authenticated (`openbb` module importable).
+- [yfinance](https://pypi.org/project/yfinance/) library for financial data and news.
 - OpenAI Python client (`pip install openai==1.*`).
 - API credentials in the environment:
   - `OPENAI_API_KEY`
-  - Any provider-specific keys required by OpenBB news sources.
 - (Optional) `.env` file – the modules auto-load it if `dotenv` is available.
 
 Install baseline dependencies:
@@ -27,7 +26,7 @@ Install baseline dependencies:
 pip install -r requirements.txt
 ```
 
-> **Tip:** if you only want the trading package, the minimal extras are `openai`, `openbb`, `numpy`, `pandas`, and `python-dotenv` (optional).
+> **Tip:** if you only want the trading package, the minimal extras are `openai`, `yfinance`, `numpy`, `pandas`, and `python-dotenv` (optional).
 
 ---
 
@@ -130,9 +129,9 @@ These structured entries are intended for later Phase 2/3 work (backtesting, das
 | Symptom | Likely Cause | Fix |
 |---------|--------------|-----|
 | `ModuleNotFoundError: No module named 'openai'` | OpenAI SDK missing | `pip install openai==1.*` |
-| `ModuleNotFoundError: No module named 'openbb'` | OpenBB SDK not installed/authenticated | Install OpenBB Platform, ensure you can `python -c "from openbb import obb"` |
-| News outputs are empty | Providers throttled / credentials missing | Reduce `NEWS_LIMIT*`, check provider keys, or disable news (`NEWS_ENABLED=0`). |
-| **Docker returns empty news/ticker data** | **OpenBB credentials not mounted** | **See `DOCKER_SETUP.md` - mount `~/.openbb_platform` as volume** |
+| `ModuleNotFoundError: No module named 'yfinance'` | yfinance library not installed | `pip install yfinance` |
+| News outputs are empty | Yahoo Finance news unavailable | Reduce `NEWS_LIMIT*`, or disable news (`NEWS_ENABLED=0`). |
+| **Docker returns empty news/ticker data** | **Network connectivity issues** | **Check internet connection and yfinance service availability** |
 | Frequent HOLD fallbacks | Prompt parse errors or missing data | Inspect `meta.raw` in log, ensure data fetchers returning adequate bars/headlines. |
 | High volatility rejections | Market is too volatile for rule | Increase `max_volatility` when instantiating `RiskManager` or adjust rule to your tolerance. |
 

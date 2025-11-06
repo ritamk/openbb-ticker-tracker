@@ -24,7 +24,14 @@ class NewsAnalyst:
     ) -> Dict[str, Any]:
         """Run the news analyst agent and return structured sentiment."""
         compact = {
-            bucket: [h.get("title", "")[:180] for h in headlines_payload.get(bucket, []) if h.get("title")]
+            bucket: [
+                {
+                    "title": h.get("title", "")[:180],
+                    "date": h.get("date", ""),
+                }
+                for h in headlines_payload.get(bucket, [])
+                if h.get("title")
+            ]
             for bucket in ["symbol_headlines", "india_headlines", "global_headlines"]
         }
         headlines_json = json.dumps(compact, ensure_ascii=False, separators=(",", ":"))

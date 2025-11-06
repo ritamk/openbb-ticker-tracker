@@ -82,6 +82,54 @@ NEWS_ANALYST_PROMPT = {
     ).strip(),
 }
 
+FUNDAMENTAL_ANALYST_SCHEMA = dedent(
+    """
+    {
+      "signal": "undervalued|overvalued|fair",
+      "confidence": 0.0,
+      "summary": "",
+      "metrics": {
+        "pe_ratio": 0.0,
+        "pb_ratio": 0.0,
+        "roe": 0.0,
+        "debt_to_equity": 0.0,
+        "profit_margin": 0.0,
+        "operating_margin": 0.0,
+        "gross_margin": 0.0,
+        "revenue_growth": 0.0,
+        "earnings_growth": 0.0,
+        "ev_ebitda": 0.0,
+        "market_cap": 0.0,
+        "institutional_holdings": 0.0,
+        "insider_holdings": 0.0
+      },
+      "drivers": []
+    }
+    """
+).strip()
+
+FUNDAMENTAL_ANALYST_PROMPT = {
+    "system": dedent(
+        f"""
+        You are a disciplined fundamental analyst. Analyze company financial metrics to determine valuation.
+        Compare metrics to industry averages and historical norms when possible. Consider profitability, growth,
+        debt levels, and valuation ratios. Summaries must be under 60 words and focus on key value drivers.
+        Signal should be: undervalued (attractive entry), overvalued (expensive), or fair (reasonably priced).
+        Return strict JSON matching this schema:
+        {FUNDAMENTAL_ANALYST_SCHEMA}
+        """
+    ).strip(),
+    "template": dedent(
+        """
+        Symbol: {symbol}
+        Fundamental Data:
+        {fundamental_json}
+        Task: Analyze the fundamental metrics and produce the JSON response following the schema.
+        Focus on valuation, profitability, growth trajectory, and financial health.
+        """
+    ).strip(),
+}
+
 TRADER_SCHEMA = dedent(
     """
     {
@@ -91,7 +139,8 @@ TRADER_SCHEMA = dedent(
       "risk_notes": "",
       "alignment": {
         "technical": "",
-        "news": ""
+        "news": "",
+        "fundamental": ""
       }
     }
     """
@@ -100,9 +149,12 @@ TRADER_SCHEMA = dedent(
 TRADER_PROMPT = {
     "system": dedent(
         f"""
-        You are the trader of record. Start from the technical analyst's proposal. Use news sentiment only to
-        adjust confidence or highlight risks; do not override solid technical signals without justification.
-        If inputs conflict, prioritize price action and lower confidence. Return JSON matching this schema:
+        You are the trader of record. Synthesize inputs from three analysts: technical, news, and fundamental.
+        Start from the technical analyst's proposal (price action is primary). Use news sentiment to adjust
+        confidence or highlight risks. Use fundamental analysis to assess long-term value and confirm or
+        question the technical signal. If inputs conflict, prioritize price action but note the divergence.
+        For example: strong technical buy + undervalued fundamental = high confidence; strong technical buy +
+        overvalued fundamental = moderate confidence with caution. Return JSON matching this schema:
         {TRADER_SCHEMA}
         """
     ).strip(),
@@ -114,7 +166,9 @@ TRADER_PROMPT = {
         {technical_report}
         News Report:
         {news_report}
-        Task: Issue a single trade decision JSON following the schema.
+        Fundamental Report:
+        {fundamental_report}
+        Task: Issue a single trade decision JSON following the schema, considering all three inputs.
         """
     ).strip(),
 }

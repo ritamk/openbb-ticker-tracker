@@ -13,6 +13,7 @@ except Exception:
 MODEL = "gpt-4o-mini"
 TA_MODEL = os.getenv("TA_MODEL", MODEL)
 NEWS_MODEL = os.getenv("NEWS_MODEL", MODEL)
+FUNDAMENTAL_MODEL = os.getenv("FUNDAMENTAL_MODEL", MODEL)
 TRADER_MODEL = os.getenv("TRADER_MODEL", "gpt-4o")
 
 # Timeframe support
@@ -52,6 +53,9 @@ TIMEFRAME_CONFIG = {
 NEWS_ENABLED = os.getenv("NEWS_ENABLED", "1") == "1"
 NEWS_LIMIT = int(os.getenv("NEWS_LIMIT", "10"))
 NEWS_PER_HEADLINE = os.getenv("NEWS_PER_HEADLINE", "0") == "1"
+
+# Fundamental analysis configuration
+FUNDAMENTAL_ENABLED = os.getenv("FUNDAMENTAL_ENABLED", "1") == "1"
 
 # Per-bucket limits with sensible fallbacks to NEWS_LIMIT
 NEWS_LIMIT_SYMBOL = int(os.getenv("NEWS_LIMIT_SYMBOL", str(NEWS_LIMIT)))

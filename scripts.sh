@@ -24,7 +24,6 @@ run_docker_image() {
     docker run --rm -p 8080:8080 \
         --env-file .env \
         -e PORT=8080 \
-        -v ~/.openbb_platform:/root/.openbb_platform:ro \
         ritamk/brok
 }
 
