@@ -16,6 +16,17 @@ NEWS_MODEL = os.getenv("NEWS_MODEL", MODEL)
 FUNDAMENTAL_MODEL = os.getenv("FUNDAMENTAL_MODEL", MODEL)
 TRADER_MODEL = os.getenv("TRADER_MODEL", "gpt-4o")
 
+# Temperature settings for each agent (higher = more creative/nuanced)
+TA_TEMPERATURE = float(os.getenv("TA_TEMPERATURE", "0.1"))  # Technical analysis needs precision
+NEWS_TEMPERATURE = float(os.getenv("NEWS_TEMPERATURE", "0.3"))  # Some interpretation needed
+FUNDAMENTAL_TEMPERATURE = float(os.getenv("FUNDAMENTAL_TEMPERATURE", "0.4"))  # More analytical nuance
+TRADER_TEMPERATURE = float(os.getenv("TRADER_TEMPERATURE", "0.5"))  # Synthesis requires creativity
+
+# Response length controls (in words, approximate)
+FUNDAMENTAL_SUMMARY_LENGTH = int(os.getenv("FUNDAMENTAL_SUMMARY_LENGTH", "120"))
+TRADER_RATIONALE_LENGTH = int(os.getenv("TRADER_RATIONALE_LENGTH", "150"))
+NEWS_SUMMARY_LENGTH = int(os.getenv("NEWS_SUMMARY_LENGTH", "80"))
+
 # Timeframe support
 DEFAULT_TIMEFRAMES: List[str] = ["1D", "15m", "5m", "30D"]
 _timeframes_env = os.getenv("DEFAULT_TIMEFRAMES") or os.getenv("TIMEFRAMES")
@@ -107,4 +118,11 @@ NEWS_CACHE_TTL_MIN = int(os.getenv("NEWS_CACHE_TTL_MIN", "30"))
 
 # Low-signal markers for filtering
 LOW_SIGNAL_MARKERS = ("press release", "sponsored", "advertorial")
+
+# Upstox API configuration
+UPSTOX_API_KEY = os.getenv("UPSTOX_API_KEY", "")
+UPSTOX_API_SECRET = os.getenv("UPSTOX_API_SECRET", "")
+UPSTOX_AUTH_TOKEN = os.getenv("UPSTOX_AUTH_TOKEN", "")
+UPSTOX_BASE_URL = os.getenv("UPSTOX_BASE_URL", "https://api.upstox.com/v2")
+UPSTOX_REDIRECT_URI = os.getenv("UPSTOX_REDIRECT_URI", "")
 

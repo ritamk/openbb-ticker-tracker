@@ -156,3 +156,39 @@ def llm_call(
         seed=seed,
     )
 
+
+def format_prompt_with_lengths(prompt: str, **kwargs) -> str:
+    """Format a prompt template with length parameters from config.
+    
+    This function injects word count targets into prompts that use placeholders like:
+    {{news_summary_length}}, {{fundamental_summary_length}}, {{trader_rationale_length}}
+    
+    Args:
+        prompt: The prompt template string
+        **kwargs: Additional format parameters
+    
+    Returns:
+        Formatted prompt with length parameters and any additional kwargs
+    """
+    # Add length parameters from config
+    length_params = {
+        "news_summary_length": config.NEWS_SUMMARY_LENGTH,
+        "fundamental_summary_length": config.FUNDAMENTAL_SUMMARY_LENGTH,
+        "trader_rationale_length": config.TRADER_RATIONALE_LENGTH,
+    }
+    
+    # Merge with any additional kwargs
+    all_params = {**length_params, **kwargs}
+    
+    # Use double braces for length params in prompts, single for regular format
+    # First replace double braces with single for length params
+    formatted = prompt
+    for key, value in length_params.items():
+        formatted = formatted.replace(f"{{{{{key}}}}}", str(value))
+    
+    # Then apply regular format for other kwargs if any
+    if kwargs:
+        formatted = formatted.format(**kwargs)
+    
+    return formatted
+
