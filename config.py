@@ -52,7 +52,7 @@ TA_COLUMNS = os.getenv("TA_COLUMNS", "")
 
 # Robustness settings
 SEED = int(os.getenv("SEED", "42")) if os.getenv("SEED") else None
-OPENAI_TIMEOUT = int(os.getenv("OPENAI_TIMEOUT", "30"))
+OPENAI_TIMEOUT = int(os.getenv("OPENAI_TIMEOUT", "90"))
 RETRIES = int(os.getenv("RETRIES", "2"))
 BACKOFF = float(os.getenv("BACKOFF", "1.5"))
 CACHE_DIR = os.getenv("CACHE_DIR", ".cache")
